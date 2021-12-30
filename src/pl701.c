@@ -1,8 +1,11 @@
 #include "stdio.h"
+#include "tokenizer.h"
+
 
 int main(int argc, char* argv[]){
 
-    printf("Hello! The 701th programming language.\n");
-    return 0;
+    if(argc != 1) { printf("The name of the source is needed. \n"); return 0; }
 
+
+    return 0;
 }
