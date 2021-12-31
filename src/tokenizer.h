@@ -8,8 +8,11 @@
 
 #define PL701_TOKENIZER_BLOCK_SZ 512
 
-static uint8_t pl701_EOF = (uint8_t)(-1);
+#define PL701_TOKENIZER_EOF -1
+#define PL701_TOKENIZER_EOB -2
 
+static const uint8_t pl701_EOF = (uint8_t)(PL701_TOKENIZER_EOF);
+static const uint8_t pl701_EOB = (uint8_t)(PL701_TOKENIZER_EOB); // End of buffer
 
 
 struct Tokenizer {
@@ -23,6 +26,9 @@ struct Tokenizer {
 
     uint32_t line_count;
     uint32_t line_pos;
+
+    int current_buffer; 
+    // 0 if foward_pos is in buffer, otherwise it is in buffer_back 
 
     FILE* source_file;
 } typedef Tokenizer;
@@ -42,12 +48,13 @@ enum TokenTag {
     TK_UNDEFINED = 0,
     TK_ID,
     TK_NUM,
-    TK_LITERAL
+    TK_LITERAL,
+    TK_SPECIAL_SYMB
 
 } typedef TokenTag;
 
 struct Token {
-    const char* name;
+    char* name;
     uint32_t name_len;
     TokenTag tag;
 } typedef Token;
@@ -55,8 +62,26 @@ struct Token {
 typedef uint64_t TokenHash_t; 
 
 
-static int pl701_new_token( Token ** token, const char* name, TokenTag tag);
+static int pl701_new_token( Token ** token, char* const name, 
+                            size_t size, 
+                            TokenTag tag);
+
 static int pl701_free_token( Token * token);
 
-static int pl701_next_token(Tokenizer * const tokenizer, Token* token);
+static int pl701_next_token(Tokenizer * const tokenizer, 
+                            Token** token, 
+                            int* success    );
+
+
+typedef uint64_t StatesMask_t; 
+static StatesMask_t pl701_final_states;
+
+static StatesMask_t pl701_find_epsilon_closure(const StatesMask_t mask);
+static StatesMask_t pl701_query_transition_table(const StatesMask_t mask,
+                                                 const char ch);
+static void pl701_get_tag_from_mask(const StatesMask_t mask, TokenTag* const tag);
+
+static int pl701_copy_token( Token** token, Tokenizer const * tokenizer, 
+                             const StatesMask_t mask);
+
 #endif
