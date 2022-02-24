@@ -3,7 +3,7 @@
 #include "tokenizer.h"
 
 
-static int 
+int 
 pl701_init_tokenizer( Tokenizer ** tokenizer, 
                                 const char* src_file){
 
@@ -26,8 +26,49 @@ pl701_init_tokenizer( Tokenizer ** tokenizer,
     tkzr->buffer_back[PL701_TOKENIZER_BLOCK_SZ] = pl701_EOB;
 
     tkzr->current_buffer = 0;
-    return PL701_OK;
 
+    return pl701_init_transition_table();
+
+};
+
+static int 
+pl701_init_transition_table(){
+
+    for(int i = 0; i < PL701_TK_STATE_COUNT; i++){
+        for(int j = 0; j < PL701_TK_CARACTER_COUNT; j++){
+             pl701_transition_table__[i][j] = 0;
+        }; };
+
+    // A test transition table with regex ([a-z]|[0-9])*abb.
+
+    Pl701_TK_ADD_TBENTRY(TK_ST_INITIAL , PL701_TK_EPSILON , 
+        Pl701_TK_MASK(TK_ST1) & Pl701_TK_MASK(TK_ST7));
+
+    Pl701_TK_ADD_TBENTRY(TK_ST1 , PL701_TK_EPSILON , 
+        Pl701_TK_MASK(TK_ST2) & Pl701_TK_MASK(TK_ST4)); 
+
+    Pl701_TK_ADD_TBENTRIES(TK_ST2 ,'a' , 'z', 
+            Pl701_TK_MASK(TK_ST3)); 
+
+    Pl701_TK_ADD_TBENTRY(TK_ST3,  PL701_TK_EPSILON , 
+            Pl701_TK_MASK(TK_ST6));
+
+    Pl701_TK_ADD_TBENTRIES(TK_ST4 ,'0' , '9',
+            Pl701_TK_MASK(TK_ST5));
+
+    Pl701_TK_ADD_TBENTRY(TK_ST6,  PL701_TK_EPSILON , 
+            Pl701_TK_MASK(TK_ST1) & Pl701_TK_MASK(TK_ST7));
+
+    Pl701_TK_ADD_TBENTRY(TK_ST7,  'a' , 
+            Pl701_TK_MASK(TK_ST8));           
+    
+    Pl701_TK_ADD_TBENTRY(TK_ST8,  'b' , 
+            Pl701_TK_MASK(TK_ST9));   
+    
+    Pl701_TK_ADD_TBENTRY(TK_ST9,  'b' , 
+            Pl701_TK_MASK(TK_ST10));   
+
+    return PL701_OK;
 };
 
 static int 
@@ -49,7 +90,7 @@ pl701_tokenizer_load_file( Tokenizer * const tokenizer ){
     return PL701_OK;
 };
 
-static int 
+int 
 pl701_tokenizer_finalized( Tokenizer * const tokenizer ){
 
     if(!fclose(tokenizer->source_file)) return  PL701_FAILED_CLOSE_FILE;
@@ -109,7 +150,7 @@ pl701_copy_token( Token** token, Tokenizer const * tokenizer,
 
      char buffer[PL701_TOKENIZER_BLOCK_SZ];
 
-     int count = 0;
+     int count = 1;
      while(cpos != fpos){
         if(*cpos == pl701_EOB){
             if(tokenizer->current_buffer) {
@@ -119,13 +160,16 @@ pl701_copy_token( Token** token, Tokenizer const * tokenizer,
             }
         }
 
-        buffer[count] = *cpos;
+        buffer[count - 1] = *cpos;
         count++; cpos++;
      };
 
-     TokenTag tag = TK_UNDEFINED;
-     pl701_get_tag_from_mask(mask, &tag);
-     return pl701_new_token( token, buffer, count, tag);
+    buffer[count - 1] = *cpos;
+
+
+    TokenTag tag = TK_UNDEFINED;
+    pl701_get_tag_from_mask(mask, &tag);
+    return pl701_new_token( token, buffer, count, tag);
 
     };
 
@@ -158,10 +202,10 @@ pl701_free_token( Token * token){
 };
 
 
-static int 
+int 
 pl701_next_token(Tokenizer * const tokenizer, Token** token, int* sucess){
     
-    StatesMask_t mask = 1; // Initial state.
+    StatesMask_t mask = TK_ST_INITIAL; // Initial state.
 
     int line = tokenizer->line_count;
     int lpos = tokenizer->line_pos;
@@ -220,8 +264,24 @@ pl701_next_token(Tokenizer * const tokenizer, Token** token, int* sucess){
 
 static StatesMask_t 
 pl701_find_epsilon_closure(const StatesMask_t mask){
+    StatesMask_t result_mask = 0;
+    result_mask |= mask;
 
-    return 0;
+    for(int i = 0; i < PL701_TK_STATE_COUNT; i++){
+        //Looping over all the states in mask.
+        if(mask & (1 << i)){
+            StatesMask_t states = pl701_transtb_single_entry(i, PL701_TK_EPSILON);
+            // Getting the states reached by one epsilon transition.
+
+            StatesMask_t states_rest = pl701_find_epsilon_closure(~result_mask & states);
+            // Getting the rest of the states by recursion. Only searching the states that 
+            // are not in result_mask.
+
+            result_mask |= states;
+            result_mask |= states_rest;
+        };
+    };
+    return result_mask;
 };
 
 
@@ -229,8 +289,27 @@ static StatesMask_t
 pl701_query_transition_table(const StatesMask_t mask,
                             const char ch){
 
-     return PL701_OK;    
+    StatesMask_t result_mask = 0;
+
+    for(int i = 0; i < PL701_TK_STATE_COUNT; i++){
+        if(mask & (1 << i)){
+            StatesMask_t states = pl701_find_epsilon_closure(
+                            pl701_transtb_single_entry(i, (int)ch));
+            result_mask |= states;
+     };
+    };
+
+    return result_mask;
+
 };
+
+static StatesMask_t 
+pl701_transtb_single_entry(TokenizerState state, int character){
+
+    return pl701_transition_table__[state][character];
+};
+
+
 
 static void 
 pl701_get_tag_from_mask(const StatesMask_t mask, TokenTag* const tag){
