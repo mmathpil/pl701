@@ -40,7 +40,8 @@ int pl701_init_tokenizer( Tokenizer ** tokenizer,
 
 int pl701_tokenizer_finalized( Tokenizer * const tokenizer );
 
-static int pl701_tokenizer_load_file( Tokenizer * const tokenizer );
+int pl701_tokenizer_load_file( Tokenizer * const tokenizer );
+
 static int pl701_tokenizer_swap_buffer( Tokenizer * const tokenizer );
 static int pl701_tokenizer_swap_buffer_back( Tokenizer * const tokenizer );
 
@@ -100,7 +101,6 @@ enum TokenizerState{
 
 
 static StatesMask_t pl701_transition_table__[PL701_TK_STATE_COUNT][PL701_TK_CARACTER_COUNT];
-static StatesMask_t pl701_final_states;
 
 static int pl701_init_transition_table();
 
@@ -115,6 +115,9 @@ static int pl701_init_transition_table();
 };} while(0);\
 
 #define Pl701_TK_MASK(state) (uint64_t)(1 << state)
+
+static StatesMask_t pl701_final_states =  Pl701_TK_MASK(TK_ST10);
+
 
 static StatesMask_t pl701_find_epsilon_closure(const StatesMask_t mask);
 static StatesMask_t pl701_query_transition_table(const StatesMask_t mask,

@@ -11,7 +11,7 @@ pl701_init_tokenizer( Tokenizer ** tokenizer,
 
     if(!f) return PL701_FAILED_OPEN_FILE;
 
-    Tokenizer* tkzr = *tokenizer;
+    Tokenizer* tkzr;
 
     tkzr = (Tokenizer*)malloc(sizeof(Tokenizer));
     tkzr->source_file = f;
@@ -27,6 +27,7 @@ pl701_init_tokenizer( Tokenizer ** tokenizer,
 
     tkzr->current_buffer = 0;
 
+    *tokenizer = tkzr;
     return pl701_init_transition_table();
 
 };
@@ -42,10 +43,10 @@ pl701_init_transition_table(){
     // A test transition table with regex ([a-z]|[0-9])*abb.
 
     Pl701_TK_ADD_TBENTRY(TK_ST_INITIAL , PL701_TK_EPSILON , 
-        Pl701_TK_MASK(TK_ST1) & Pl701_TK_MASK(TK_ST7));
+        Pl701_TK_MASK(TK_ST1) | Pl701_TK_MASK(TK_ST7));
 
     Pl701_TK_ADD_TBENTRY(TK_ST1 , PL701_TK_EPSILON , 
-        Pl701_TK_MASK(TK_ST2) & Pl701_TK_MASK(TK_ST4)); 
+        Pl701_TK_MASK(TK_ST2) | Pl701_TK_MASK(TK_ST4)); 
 
     Pl701_TK_ADD_TBENTRIES(TK_ST2 ,'a' , 'z', 
             Pl701_TK_MASK(TK_ST3)); 
@@ -56,8 +57,11 @@ pl701_init_transition_table(){
     Pl701_TK_ADD_TBENTRIES(TK_ST4 ,'0' , '9',
             Pl701_TK_MASK(TK_ST5));
 
+    Pl701_TK_ADD_TBENTRY(TK_ST5,  PL701_TK_EPSILON , 
+            Pl701_TK_MASK(TK_ST6));
+
     Pl701_TK_ADD_TBENTRY(TK_ST6,  PL701_TK_EPSILON , 
-            Pl701_TK_MASK(TK_ST1) & Pl701_TK_MASK(TK_ST7));
+            Pl701_TK_MASK(TK_ST1) | Pl701_TK_MASK(TK_ST7));
 
     Pl701_TK_ADD_TBENTRY(TK_ST7,  'a' , 
             Pl701_TK_MASK(TK_ST8));           
@@ -71,21 +75,27 @@ pl701_init_transition_table(){
     return PL701_OK;
 };
 
-static int 
+int 
 pl701_tokenizer_load_file( Tokenizer * const tokenizer ){
 
     if(!tokenizer) return PL701_MISUSE;
 
     FILE* f = tokenizer->source_file;
 
-    uint8_t* bptr = tokenizer->buffer;
-    size_t read_sz = fread(bptr, PL701_TOKENIZER_BLOCK_SZ, sizeof(uint8_t), f);
+    clearerr(f);
 
-    if(!read_sz) return  PL701_FAILED_READ_FILE;
+    for(int i = 0; i <  PL701_TOKENIZER_BLOCK_SZ; i++){
+        int ch = getc(f);
 
-    if(read_sz < PL701_TOKENIZER_BLOCK_SZ){
-        tokenizer->buffer[read_sz] = pl701_EOF;
-    };
+        if(ch == EOF){
+            tokenizer->buffer[i] = pl701_EOF;
+            if(feof(f)) return  PL701_OK;
+            return  PL701_FAILED_READ_FILE;
+        };
+
+        tokenizer->buffer[i] = (uint8_t)ch;
+
+    }
 
     return PL701_OK;
 };
@@ -109,13 +119,19 @@ pl701_tokenizer_swap_buffer( Tokenizer * const tokenizer ) {
     tokenizer->foward_pos = bptr;
     tokenizer->current_buffer = 1;
 
-    size_t read_sz = fread(bptr, PL701_TOKENIZER_BLOCK_SZ, sizeof(uint8_t), f);
+    clearerr(f);
+    for(int i = 0; i <  PL701_TOKENIZER_BLOCK_SZ; i++){
+        int ch = getc(f);
 
-    if(!read_sz) return  PL701_FAILED_READ_FILE;
+        if(ch == EOF){
+            *(bptr + i)  = pl701_EOF;
+            if(feof(f)) return  PL701_OK;
+            return  PL701_FAILED_READ_FILE;
+        };
 
-    if(read_sz < PL701_TOKENIZER_BLOCK_SZ){
-        tokenizer->buffer_back[read_sz] = pl701_EOF;
-    };
+        *(bptr + i) = (uint8_t)ch;
+
+    }
 
     return PL701_OK;
 };
@@ -129,13 +145,19 @@ pl701_tokenizer_swap_buffer_back( Tokenizer * const tokenizer ) {
     tokenizer->foward_pos = bptr;
     tokenizer->current_buffer = 0;
 
-    size_t read_sz = fread(bptr, PL701_TOKENIZER_BLOCK_SZ, sizeof(uint8_t), f);
+    clearerr(f);
+    for(int i = 0; i <  PL701_TOKENIZER_BLOCK_SZ; i++){
+        int ch = getc(f);
 
-    if(!read_sz) return  PL701_FAILED_READ_FILE;
+        if(ch == EOF){
+            *(bptr + i) = pl701_EOF;
+            if(feof(f)) return  PL701_OK;
+            return  PL701_FAILED_READ_FILE;
+        };
 
-    if(read_sz < PL701_TOKENIZER_BLOCK_SZ){
-        tokenizer->buffer[read_sz] = pl701_EOF;
-    };
+        *(bptr + i)  = (uint8_t)ch;
+
+    }
 
     return PL701_OK;
 
@@ -177,7 +199,7 @@ pl701_copy_token( Token** token, Tokenizer const * tokenizer,
 static int
 pl701_new_token( Token ** token, char* name, size_t size, TokenTag tag){
      
-     Token* tk = *token;
+     Token* tk;
      tk = (Token*)malloc(sizeof(Token));
 
      // TODO: should handle unicode in future.
@@ -186,6 +208,7 @@ pl701_new_token( Token ** token, char* name, size_t size, TokenTag tag){
      *(tk->name + size) = '\0'; // Make the string null terminated.
      tk->name_len = size;
      tk->tag = tag;
+     *token = tk;
 
      return PL701_OK; 
 
@@ -205,7 +228,7 @@ pl701_free_token( Token * token){
 int 
 pl701_next_token(Tokenizer * const tokenizer, Token** token, int* sucess){
     
-    StatesMask_t mask = TK_ST_INITIAL; // Initial state.
+    StatesMask_t mask = Pl701_TK_MASK(TK_ST_INITIAL); // Initial state.
 
     int line = tokenizer->line_count;
     int lpos = tokenizer->line_pos;
@@ -239,7 +262,7 @@ pl701_next_token(Tokenizer * const tokenizer, Token** token, int* sucess){
                 *sucess = 0;
                 return PL701_OK;
 
-            }else if(mask && pl701_final_states) {
+            }else if(mask & pl701_final_states) {
                 pl701_copy_token(token, tokenizer, mask);
                 *sucess = 1;
                 tokenizer->current_pos = tokenizer->foward_pos;
@@ -254,7 +277,7 @@ pl701_next_token(Tokenizer * const tokenizer, Token** token, int* sucess){
         };
 
         tokenizer->foward_pos++;
-        char ch = *(tokenizer->foward_pos);
+        ch = *(tokenizer->foward_pos);
     
         lpos++;
         if(ch == '\n') {lpos = 0; line++; };
@@ -265,7 +288,6 @@ pl701_next_token(Tokenizer * const tokenizer, Token** token, int* sucess){
 static StatesMask_t 
 pl701_find_epsilon_closure(const StatesMask_t mask){
     StatesMask_t result_mask = 0;
-    result_mask |= mask;
 
     for(int i = 0; i < PL701_TK_STATE_COUNT; i++){
         //Looping over all the states in mask.
@@ -273,7 +295,7 @@ pl701_find_epsilon_closure(const StatesMask_t mask){
             StatesMask_t states = pl701_transtb_single_entry(i, PL701_TK_EPSILON);
             // Getting the states reached by one epsilon transition.
 
-            StatesMask_t states_rest = pl701_find_epsilon_closure(~result_mask & states);
+            StatesMask_t states_rest = pl701_find_epsilon_closure((~result_mask) & states);
             // Getting the rest of the states by recursion. Only searching the states that 
             // are not in result_mask.
 
@@ -293,9 +315,11 @@ pl701_query_transition_table(const StatesMask_t mask,
 
     for(int i = 0; i < PL701_TK_STATE_COUNT; i++){
         if(mask & (1 << i)){
-            StatesMask_t states = pl701_find_epsilon_closure(
-                            pl701_transtb_single_entry(i, (int)ch));
+            StatesMask_t states = pl701_transtb_single_entry(i, (int)ch);
+            StatesMask_t closure = pl701_find_epsilon_closure(states);
+
             result_mask |= states;
+            result_mask |= closure;
      };
     };
 

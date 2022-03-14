@@ -9,5 +9,6 @@ set(source
     "src/error.h"
     )
 
-add_executable(pl701 ${source})
 
+add_executable(pl701 ${source})
+target_compile_options(pl701 PRIVATE -ggdb )
