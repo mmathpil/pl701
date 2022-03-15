@@ -7,8 +7,16 @@ set(source
     "src/tokenizer.h"
     "src/tokenizer.c"
     "src/error.h"
+    "src/error.c"
     )
 
 
 add_executable(pl701 ${source})
 target_compile_options(pl701 PRIVATE -ggdb )
+
+add_library(pl701_static ${source})
+target_compile_options(pl701_static PRIVATE -ggdb )
+
+add_subdirectory(tests)
+
+
