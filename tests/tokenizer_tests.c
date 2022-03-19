@@ -14,17 +14,15 @@ static Tokenizer*
 init_and_load_tokenizer(const char* filename){
 
    Tokenizer* tkizer;
-   if( pl701_init_tokenizer( &tkizer, filename ) != PL701_OK ) { 
-        printf("Tokenizer initalize eror.\n");
-        return NULL;
-    };
 
-    if( pl701_tokenizer_load_file(tkizer) != PL701_OK ){
-        printf("Tokenizer failed to load file.\n"); 
-        return NULL;
-   };
+   int errcode = pl701_init_tokenizer( &tkizer, filename );    
+   PL701_ASSERTC(errcode == PL701_OK, errcode, "Tokenizer initalize eror.")
 
- return tkizer;
+   errcode =  pl701_tokenizer_load_file(tkizer);
+
+   PL701_ASSERTC( errcode == PL701_OK ,errcode,  "Tokenizer failed to load file.")
+   return tkizer;
+
 };
 
 
@@ -32,20 +30,15 @@ static int
 wite_to_file(const char* filename, const char* content){
     
     FILE* f = fopen(filename, "w");
-    if(!f) {
-        printf("Failed to open file %s", filename);
-        return PL701_FAILED_OPEN_FILE; // TODO: Properly raise error.
-    };
+
+    PL701_ASSERTC(f, PL701_FAILED_OPEN_FILE, "Failed to open file %s", filename)
     
     int size = 0;
     const char* cptr = content;
     while(*cptr++) size++;
-
     int res = fwrite(content, sizeof(char),size ,f);
-    if(!res) {
-        printf("Failed write to file %s", filename);
-        return PL701_FAILED_WRITE_FILE;
-    };
+
+    PL701_ASSERTC(res, PL701_FAILED_WRITE_FILE, "Failed write to file %s", filename)
 
     fclose(f);
 
@@ -68,17 +61,19 @@ tokenizer_basic_tests(){
     res = pl701_next_token(tkinzer, &token, &success);
 
     // Assert
+
     if(res != PL701_OK){
-        printf("Tokenizer failed.\n");
+        PL701_ERRORC(res, "Tokenizer failed." )
         return; 
     };
 
     if(!success){
-        printf("Failed to find token.\n");
+        PL701_ERROR("Failed to find token.")
         return ;
    };
 
-   printf("Token name : %s", token->name );
+   PL701_INFO("Token name : %s", token->name );
+
 
 
 

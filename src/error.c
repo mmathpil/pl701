@@ -1,6 +1,6 @@
 #include "stdio.h"
 #include "error.h"
-#include "stdarg.h"
+
 
 pl701_err_callback pl701_global_error_callback = &pl701_default_err_callback;
 
@@ -18,11 +18,16 @@ pl701_set_error_callback(pl701_err_callback callback){
 
 
 int 
-pl701_raise_error(int errlvl, int errcode, const char* message){
+pl701_raise_error(int errlvl, int errcode, const char* message, ...){
+
+    va_list args;
+    va_start(args, message);
 
     if(pl701_global_error_callback){
-        return pl701_global_error_callback(errlvl, errcode, stderr, message);
+        return pl701_global_error_callback(errlvl, errcode, stderr, message, args);
     }
+
+    va_end(args);
 
     return PL701_NO_ERR_CALLBACK;
 
@@ -32,16 +37,14 @@ pl701_raise_error(int errlvl, int errcode, const char* message){
 static int pl701_default_err_callback(int errlvl, 
                                       int errcode, 
                                       FILE* stream, 
-                                      const char* msg, ...)
+                                      const char* msg,
+                                      va_list args)
 {
     pl701_print_err_color_scheme(errlvl, stream);
     pl701_print_err_code_msg(errcode, stream);
 
-    va_list args;
-
-    va_start(args, msg);
     vfprintf(stream, msg, args);
-    va_end(args);
+
 
     fprintf(stream, "\x1b[0m");
     fprintf(stream, "\n");
@@ -74,6 +77,7 @@ pl701_print_err_color_scheme(int errlvl, FILE* stream){
 static void pl701_print_err_code_msg(int errcode, FILE* stream){
 
         switch(errcode){
+        case PL701_GENERIC: return;
         PL701_PRINT_ERR_CODE_CASE__(PL701_OK, "[ok]")
         PL701_PRINT_ERR_CODE_CASE__(PL701_MISUSE, "[misused]")
         PL701_PRINT_ERR_CODE_CASE__(PL701_NO_ERR_CALLBACK, "[no error callback]")
