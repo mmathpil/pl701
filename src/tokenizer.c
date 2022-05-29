@@ -7,7 +7,11 @@ int
 pl701_init_tokenizer( Tokenizer ** tokenizer, 
                                 const char* src_file){
 
-    FILE* f = fopen(src_file, "rb");
+#ifdef _WIN32
+    FILE* f = fopen(src_file, "rt");
+#else
+    FILE* f = fopen(src_file, "r");
+#endif
 
     if(!f) return PL701_FAILED_OPEN_FILE;
 
@@ -26,6 +30,10 @@ pl701_init_tokenizer( Tokenizer ** tokenizer,
     tkzr->buffer_back[PL701_TOKENIZER_BLOCK_SZ] = pl701_EOB;
 
     tkzr->current_buffer = 0;
+    tkzr->parsestate_ptr = &(tkzr->parsestate_bf);
+
+    tkzr->tkinzr_state = TKZR_READY;
+    tkzr->load_on_swap = 1;
 
     *tokenizer = tkzr;
     return pl701_init_transition_table();
@@ -40,37 +48,28 @@ pl701_init_transition_table(){
              pl701_transition_table__[i][j] = 0;
         }; };
 
-    // A test transition table with regex ([a-z]|[0-9])*abb.
-
-    Pl701_TK_ADD_TBENTRY(TK_ST_INITIAL , PL701_TK_EPSILON , 
-        Pl701_TK_MASK(TK_ST1) | Pl701_TK_MASK(TK_ST7));
-
-    Pl701_TK_ADD_TBENTRY(TK_ST1 , PL701_TK_EPSILON , 
-        Pl701_TK_MASK(TK_ST2) | Pl701_TK_MASK(TK_ST4)); 
-
-    Pl701_TK_ADD_TBENTRIES(TK_ST2 ,'a' , 'z', 
-            Pl701_TK_MASK(TK_ST3)); 
-
-    Pl701_TK_ADD_TBENTRY(TK_ST3,  PL701_TK_EPSILON , 
-            Pl701_TK_MASK(TK_ST6));
-
-    Pl701_TK_ADD_TBENTRIES(TK_ST4 ,'0' , '9',
-            Pl701_TK_MASK(TK_ST5));
-
-    Pl701_TK_ADD_TBENTRY(TK_ST5,  PL701_TK_EPSILON , 
-            Pl701_TK_MASK(TK_ST6));
-
-    Pl701_TK_ADD_TBENTRY(TK_ST6,  PL701_TK_EPSILON , 
-            Pl701_TK_MASK(TK_ST1) | Pl701_TK_MASK(TK_ST7));
-
-    Pl701_TK_ADD_TBENTRY(TK_ST7,  'a' , 
-            Pl701_TK_MASK(TK_ST8));           
+    // Entry point of the transition table.
+    Pl701_TK_TBEPSILON(TK_ST_INITIAL, Pl701_TK_MASK(TK_ST1) | Pl701_TK_MASK(TK_ST2));
     
-    Pl701_TK_ADD_TBENTRY(TK_ST8,  'b' , 
-            Pl701_TK_MASK(TK_ST9));   
-    
-    Pl701_TK_ADD_TBENTRY(TK_ST9,  'b' , 
-            Pl701_TK_MASK(TK_ST10));   
+    Pl701_TK_TBSETS(TK_ST1, "\t\n\v\f\r ", Pl701_TK_MASK(TK_ST2))
+
+    Pl701_TK_TBEPSILON(TK_ST2,  Pl701_TK_MASK(TK_ST1)| Pl701_TK_MASK(TK_ST3));
+
+    // Parsing of the ID.
+    Pl701_TK_TBRANGE(TK_ST3, 'a','z' , Pl701_TK_MASK(TK_ST4));
+    Pl701_TK_TBRANGE(TK_ST3, 'A', 'Z', Pl701_TK_MASK(TK_ST4));
+    Pl701_TK_TBSETS(TK_ST3, "_", Pl701_TK_MASK(TK_ST4));
+
+    Pl701_TK_TBRANGE(TK_ST4, 'a', 'z', Pl701_TK_MASK(TK_ST5));
+    Pl701_TK_TBRANGE(TK_ST4, 'A', 'Z', Pl701_TK_MASK(TK_ST5));
+    Pl701_TK_TBRANGE(TK_ST4, '0', '9', Pl701_TK_MASK(TK_ST5));
+    Pl701_TK_TBSETS(TK_ST4, "_-'", Pl701_TK_MASK(TK_ST5));
+    Pl701_TK_TBEPSILON(TK_ST4, Pl701_TK_MASK(TK_ST6));
+
+    Pl701_TK_TBEPSILON(TK_ST5, Pl701_TK_MASK(TK_ST4)|Pl701_TK_MASK(TK_ST6));
+    // TK_ST6 is the terminating state of ID.
+
+
 
     return PL701_OK;
 };
@@ -119,19 +118,21 @@ pl701_tokenizer_swap_buffer( Tokenizer * const tokenizer ) {
     tokenizer->foward_pos = bptr;
     tokenizer->current_buffer = 1;
 
-    clearerr(f);
-    for(int i = 0; i <  PL701_TOKENIZER_BLOCK_SZ; i++){
-        int ch = getc(f);
+    if (tokenizer->load_on_swap) {
+        clearerr(f);
+        for (int i = 0; i < PL701_TOKENIZER_BLOCK_SZ; i++) {
+            int ch = getc(f);
 
-        if(ch == EOF){
-            *(bptr + i)  = pl701_EOF;
-            if(feof(f)) return  PL701_OK;
-            return  PL701_FAILED_READ_FILE;
-        };
+            if (ch == EOF) {
+                *(bptr + i) = pl701_EOF;
+                if (feof(f)) return  PL701_OK;
+                return  PL701_FAILED_READ_FILE;
+            };
 
-        *(bptr + i) = (uint8_t)ch;
+            *(bptr + i) = (uint8_t)ch;
 
-    }
+        }
+    };
 
     return PL701_OK;
 };
@@ -145,27 +146,84 @@ pl701_tokenizer_swap_buffer_back( Tokenizer * const tokenizer ) {
     tokenizer->foward_pos = bptr;
     tokenizer->current_buffer = 0;
 
-    clearerr(f);
-    for(int i = 0; i <  PL701_TOKENIZER_BLOCK_SZ; i++){
-        int ch = getc(f);
+    if (tokenizer->load_on_swap) {
+        clearerr(f);
+        for (int i = 0; i < PL701_TOKENIZER_BLOCK_SZ; i++) {
+            int ch = getc(f);
 
-        if(ch == EOF){
-            *(bptr + i) = pl701_EOF;
-            if(feof(f)) return  PL701_OK;
-            return  PL701_FAILED_READ_FILE;
-        };
+            if (ch == EOF) {
+                *(bptr + i) = pl701_EOF;
+                if (feof(f)) return  PL701_OK;
+                return  PL701_FAILED_READ_FILE;
+            };
 
-        *(bptr + i)  = (uint8_t)ch;
+            *(bptr + i) = (uint8_t)ch;
 
-    }
+        }
+    };
 
     return PL701_OK;
 
 };
 
+
+static int
+pl701_rewind_char(Tokenizer* const tokenizer) {
+
+    char* cp = tokenizer->foward_pos;
+    
+    if (cp == tokenizer->current_pos) {
+        PL701_WARN("Cannot continue to rewind the tokenizer.");
+        return  PL701_OK;
+    };
+
+    if (cp == tokenizer->buffer) {
+        tokenizer->current_buffer = 1;
+        tokenizer->load_on_swap = 0;
+        tokenizer->foward_pos = (tokenizer->buffer_back + PL701_TOKENIZER_BLOCK_SZ - 1);
+
+    }
+    else if (cp == tokenizer->buffer_back) {
+        tokenizer->current_buffer = 0;
+        tokenizer->load_on_swap = 0;
+        tokenizer->foward_pos = (tokenizer->buffer + +PL701_TOKENIZER_BLOCK_SZ - 1);
+    }
+    else {
+        tokenizer->foward_pos--;
+    };
+
+    return PL701_OK;
+};
+
+
 static int 
-pl701_copy_token( Token** token, Tokenizer const * tokenizer,
-                  const StatesMask_t mask){
+pl701_next_char(Tokenizer* const tokenizer, char* ch) {
+    
+    char c = *(tokenizer->foward_pos);
+
+    if (c == pl701_EOF) { *ch = c; return PL701_OK; };
+
+    if (c == pl701_EOB) {
+        if (tokenizer->current_buffer) {
+            pl701_tokenizer_swap_buffer_back(tokenizer);
+        }
+        else {
+            pl701_tokenizer_swap_buffer(tokenizer);
+        }
+       
+        // After we swap the buffer, we want the the buffer continues to load after that.
+        tokenizer->load_on_swap = 1;
+
+    }
+
+    *ch = c;
+    tokenizer->foward_pos++;
+    return PL701_OK;
+
+};
+
+static int 
+pl701_copy_token( Token** token, Tokenizer const * tokenizer){
 
      uint8_t* cpos = tokenizer->current_pos;
      uint8_t* fpos = tokenizer->foward_pos;
@@ -188,13 +246,87 @@ pl701_copy_token( Token** token, Tokenizer const * tokenizer,
 
     buffer[count - 1] = *cpos;
 
-
     TokenTag tag = TK_UNDEFINED;
-    pl701_get_tag_from_mask(mask, &tag);
+    pl701_get_tag_from_mask(*(tokenizer->parsestate_ptr), &tag);
     return pl701_new_token( token, buffer, count, tag);
 
     };
 
+static int 
+pl701_rewind_tokenizer(Tokenizer* const tokenizer) {
+
+    
+    uint8_t* base = tokenizer->parsestate_bf;
+    uint8_t* ptr = tokenizer->parsestate_ptr;
+
+    do {
+        if ((*ptr) & pl701_final_states) {
+            tokenizer->tkinzr_state = TKZR_SUCCESS;
+            return PL701_OK;
+        }
+        pl701_rewind_char(tokenizer);
+        ptr--;
+    } while (base != ptr);
+
+    tokenizer->tkinzr_state = TKZR_FAILED;
+    return PL701_OK;
+}
+
+
+static int
+pl701_update_tokenizer(Tokenizer* const tokenizer) {
+
+    uint8_t* cpos = tokenizer->current_pos;
+    uint8_t nextcpos;
+
+    uint8_t* fpos = tokenizer->foward_pos;
+
+    uint32_t line = tokenizer->line_count;
+    uint32_t pos = tokenizer->current_pos;
+
+    while ( cpos != fpos ) {
+
+        switch (*cpos) {
+        case  PL701_TOKENIZER_EOB:
+            // Note that the current_buffer indicates the positions of foward pointer. 
+            if (tokenizer->current_buffer) {
+                cpos = tokenizer->buffer_back;
+            } else {
+                cpos = tokenizer->buffer;
+            };
+            break;
+        case PL701_TOKENIZER_EOF:
+            PL701_WARN("EOF reached before finding the foward pointer.");
+            goto WHILE_END;
+        case '\n':
+            line++; pos = 0; cpos++;
+            break;
+        default:
+            pos++; cpos++;
+        }
+
+    };
+
+WHILE_END:
+
+    // Updating the positions.
+    tokenizer->line_count = line;
+    tokenizer->line_pos = pos;
+    tokenizer->current_pos = tokenizer->foward_pos;
+
+    // Clearly parse states buffer.
+    tokenizer->parsestate_ptr = tokenizer->parsestate_bf;
+
+    // Updating tokenizer states.
+    if (tokenizer->foward_pos == pl701_EOF) {
+        tokenizer->tkinzr_state = TKZR_EOF;
+    }
+    else {
+        tokenizer->tkinzr_state = TKZR_READY;
+    }
+
+    return PL701_OK;
+}
 
 static int
 pl701_new_token( Token ** token, char* name, size_t size, TokenTag tag){
@@ -226,63 +358,49 @@ pl701_free_token( Token * token){
 
 
 int 
-pl701_next_token(Tokenizer * const tokenizer, Token** token, int* sucess){
+pl701_next_token(Tokenizer * const tokenizer, Token** token){
     
     StatesMask_t mask = Pl701_TK_MASK(TK_ST_INITIAL); // Initial state.
-
-    int line = tokenizer->line_count;
-    int lpos = tokenizer->line_pos;
-
-    char ch = *(tokenizer->foward_pos);
-    mask = pl701_find_epsilon_closure(mask);
-
-    while(1){
-
-        switch(ch){
-
-        case PL701_TOKENIZER_EOB:
-
-            if(tokenizer->current_buffer) { 
-                pl701_tokenizer_swap_buffer_back(tokenizer);
-            } else {
-                pl701_tokenizer_swap_buffer(tokenizer);
-            }
-            break;
-
-        case PL701_TOKENIZER_EOF:
-            tokenizer->current_pos = tokenizer->foward_pos;
-            return PL701_EOF_ERROR; 
-
-        default:
-            mask = pl701_query_transition_table(mask, ch);
-
-            if(!mask){ // No states are availble. Invaild token.
-
-                token = NULL;
-                *sucess = 0;
-                return PL701_OK;
-
-            }else if(mask & pl701_final_states) {
-                pl701_copy_token(token, tokenizer, mask);
-                *sucess = 1;
-                tokenizer->current_pos = tokenizer->foward_pos;
-                tokenizer->line_count = line;
-                tokenizer->line_pos = lpos;
-
-                return PL701_OK;
-            } else {
-                break;
-            }
-
-        };
-
-        tokenizer->foward_pos++;
-        ch = *(tokenizer->foward_pos);
+    StatesMask_t final_states = 0;
     
-        lpos++;
-        if(ch == '\n') {lpos = 0; line++; };
+    mask = pl701_find_epsilon_closure(mask);
+    *(tokenizer->parsestate_ptr) = mask;
+     (tokenizer->parsestate_ptr)++;
+
+     char ch;
+
+     for (int count = 1; count < PL701_TOKENIZER_BLOCK_SZ; count ++) {
+
+        pl701_next_char(tokenizer, &ch);
+
+        if ((ch == PL701_TOKENIZER_EOF) || !mask) {
+            // When end of the file reached or the tokenizer reached an end state,
+            // start rewinding and find a vaild token.
+
+            pl701_rewind_tokenizer(tokenizer);
+            if (tokenizer->tkinzr_state == TKZR_SUCCESS) {
+                pl701_copy_token(token, tokenizer);
+            };
+            return pl701_update_tokenizer(tokenizer);
+        }
+
+        mask = pl701_query_transition_table(mask, ch);
+
+        *(tokenizer->parsestate_ptr) = mask;
+        (tokenizer->parsestate_ptr)++;
+
     };
-};
+
+     PL701_WARN("The maximum token size reached. Start rewinding anyway.")
+
+     pl701_rewind_tokenizer(tokenizer);
+     if (tokenizer->tkinzr_state == TKZR_SUCCESS) {
+         pl701_copy_token(token, tokenizer);
+     };
+     return pl701_update_tokenizer(tokenizer);
+}
+
+
 
 
 static StatesMask_t 
@@ -328,7 +446,7 @@ pl701_query_transition_table(const StatesMask_t mask,
 };
 
 static StatesMask_t 
-pl701_transtb_single_entry(TokenizerState state, int character){
+pl701_transtb_single_entry(ParseState state, int character){
 
     return pl701_transition_table__[state][character];
 };

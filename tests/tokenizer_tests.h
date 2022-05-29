@@ -9,4 +9,4 @@ static int wite_to_file(const char* filename, const char* content);
 
 // Tests
 
-static void tokenizer_basic_tests();
+static void tokenizer_ID_tests();

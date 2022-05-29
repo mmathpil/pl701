@@ -4,7 +4,7 @@
 int 
 tokenizer_run_all_tests(int argc, char* argv[]){
 
-    tokenizer_basic_tests();
+    tokenizer_ID_tests();
     return 0;
 
 }
@@ -46,11 +46,11 @@ wite_to_file(const char* filename, const char* content){
 };
 
 static void 
-tokenizer_basic_tests(){
+tokenizer_ID_tests(){
     // Arrange
-    static const char* filename = "tokenizer_basic_tests.txt";
+    static const char* filename = "tokenizer_id_tests.txt";
 
-    if (wite_to_file(filename, "3342dljfksdl4h3cabb") != PL701_OK) return;
+    if (wite_to_file(filename, "_912pp-a4AS\n") != PL701_OK) return;
     Tokenizer* tkinzer = init_and_load_tokenizer(filename);
     if(!tkinzer) return;
 
@@ -69,13 +69,14 @@ tokenizer_basic_tests(){
 
     if(!success){
         PL701_ERROR("Failed to find token.")
-        return ;
-   };
+        return;
+    };
 
+    if (token->tag != TK_ID) {
+        PL701_ERROR("Incorrect Token Tags.")
+    }
+   
    PL701_INFO("Token name : %s", token->name );
-
-
-
 
 };
 
