@@ -1,7 +1,7 @@
 #include "stdlib.h"
 #include "string.h"
 #include "tokenizer.h"
-
+#include "ctype.h"
 
 int 
 pl701_init_tokenizer( Tokenizer ** tokenizer, 
@@ -23,7 +23,7 @@ pl701_init_tokenizer( Tokenizer ** tokenizer,
     tkzr->current_pos = tkzr->buffer;
     tkzr->foward_pos =  tkzr->buffer;
 
-    tkzr->line_count = 0;
+    tkzr->line_count = 1;
     tkzr->line_pos = 0;
 
     tkzr->buffer[PL701_TOKENIZER_BLOCK_SZ] = pl701_EOB;
@@ -226,12 +226,12 @@ static int
 pl701_copy_token( Token** token, Tokenizer const * tokenizer){
 
      uint8_t* cpos = tokenizer->current_pos;
-     uint8_t* fpos = tokenizer->foward_pos;
+     uint8_t* fpos = tokenizer->foward_pos; 
 
      char buffer[PL701_TOKENIZER_BLOCK_SZ];
 
      int count = 1;
-     while(cpos != fpos){
+     while(cpos != (fpos - 1) ){
         if(*cpos == pl701_EOB){
             if(tokenizer->current_buffer) {
                 cpos = tokenizer->buffer_back;
@@ -240,12 +240,16 @@ pl701_copy_token( Token** token, Tokenizer const * tokenizer){
             }
         }
 
-        buffer[count - 1] = *cpos;
-        count++; cpos++;
+        if (!isspace(*cpos)) {
+            buffer[count - 1] = *cpos;
+            count++;
+        };
+
+         cpos++;
      };
 
-    buffer[count - 1] = *cpos;
-
+     if (!isspace(*cpos)) buffer[count - 1] = *cpos;
+   
     TokenTag tag = TK_UNDEFINED;
     pl701_get_tag_from_mask(*(tokenizer->parsestate_ptr), &tag);
     return pl701_new_token( token, buffer, count, tag);
@@ -256,19 +260,22 @@ static int
 pl701_rewind_tokenizer(Tokenizer* const tokenizer) {
 
     
-    uint8_t* base = tokenizer->parsestate_bf;
-    uint8_t* ptr = tokenizer->parsestate_ptr;
+    StatesMask_t* base = tokenizer->parsestate_bf;
+    StatesMask_t* ptr = tokenizer->parsestate_ptr;
 
     do {
+        ptr--;
         if ((*ptr) & pl701_final_states) {
             tokenizer->tkinzr_state = TKZR_SUCCESS;
+            tokenizer->parsestate_ptr = ptr;
             return PL701_OK;
         }
         pl701_rewind_char(tokenizer);
-        ptr--;
-    } while (base != ptr);
+    } while ( (base + 1) != ptr);
+    // base points to the state calculated from epsilon closure, so we don't need to rewind that far.
 
     tokenizer->tkinzr_state = TKZR_FAILED;
+    tokenizer->parsestate_ptr = ptr;
     return PL701_OK;
 }
 
@@ -282,7 +289,7 @@ pl701_update_tokenizer(Tokenizer* const tokenizer) {
     uint8_t* fpos = tokenizer->foward_pos;
 
     uint32_t line = tokenizer->line_count;
-    uint32_t pos = tokenizer->current_pos;
+    uint32_t pos = tokenizer->line_pos;
 
     while ( cpos != fpos ) {
 
@@ -373,6 +380,11 @@ pl701_next_token(Tokenizer * const tokenizer, Token** token){
 
         pl701_next_char(tokenizer, &ch);
 
+        mask = pl701_query_transition_table(mask, ch);
+
+        *(tokenizer->parsestate_ptr) = mask;
+        (tokenizer->parsestate_ptr)++;
+
         if ((ch == PL701_TOKENIZER_EOF) || !mask) {
             // When end of the file reached or the tokenizer reached an end state,
             // start rewinding and find a vaild token.
@@ -380,14 +392,18 @@ pl701_next_token(Tokenizer * const tokenizer, Token** token){
             pl701_rewind_tokenizer(tokenizer);
             if (tokenizer->tkinzr_state == TKZR_SUCCESS) {
                 pl701_copy_token(token, tokenizer);
+                return pl701_update_tokenizer(tokenizer);
+            }
+            else if(tokenizer->tkinzr_state == TKZR_FAILED) {
+                return PL701_OK;
+            }
+            else {
+                PL701_CRITICAL("Tokenizer internal error!");
             };
-            return pl701_update_tokenizer(tokenizer);
+            
         }
 
-        mask = pl701_query_transition_table(mask, ch);
 
-        *(tokenizer->parsestate_ptr) = mask;
-        (tokenizer->parsestate_ptr)++;
 
     };
 
@@ -456,6 +472,7 @@ pl701_transtb_single_entry(ParseState state, int character){
 static void 
 pl701_get_tag_from_mask(const StatesMask_t mask, TokenTag* const tag){
 
+    if (mask & Pl701_TK_MASK(TK_ST6)) *tag = TK_ID;
 
 };
 

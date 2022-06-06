@@ -40,6 +40,12 @@ static void pl701_print_err_code_msg(int errcode, FILE* stream);
 #define PL701_PRINT_ERR_CODE_CASE__(errcode, msg)    case errcode : \
                                                      fprintf(stream, msg); return;\
 
+#ifdef _WIN32
+#define PL701_BREAK() __debugbreak()
+# elif __linux__
+#define PL701_BREAK() __builtin_trap();
+#endif
+
 #define PL701_TRACEC(errcode, msg, ...) { pl701_raise_error(PL701_TRACE, errcode, msg, ##__VA_ARGS__ ); };
 #define PL701_TRACE(msg, ...) PL701_TRACEC(PL701_GENERIC, msg, ##__VA_ARGS__ )
 
@@ -52,9 +58,9 @@ static void pl701_print_err_code_msg(int errcode, FILE* stream);
 #define PL701_ERRORC(errcode, msg, ...) { pl701_raise_error(PL701_ERROR, errcode, msg, ##__VA_ARGS__ ); };
 #define PL701_ERROR(msg, ...) PL701_ERRORC(PL701_GENERIC, msg, ##__VA_ARGS__ )
 
-#define PL701_CRITICALC(errcode, msg, ...) { pl701_raise_error(PL701_CRITICAL, errcode, msg, ##__VA_ARGS__ ); };
+#define PL701_CRITICALC(errcode, msg, ...) { pl701_raise_error(PL701_CRITICAL, errcode, msg, ##__VA_ARGS__ ); PL701_BREAK(); };
 #define PL701_CRITICAL(msg, ...) PL701_CRITICALC(PL701_GENERIC, msg, ##__VA_ARGS__ )
 
 #define PL701_ASSERTC(x, errcode, msg, ...) if(!x){ PL701_ERRORC(errcode, msg, ##__VA_ARGS__ ) }; 
-#define PL701_ASSERT(x, msg, ...) if(!x){ PL701_ERROR(msg,  ##__VA_ARGS__ ); __builtin_trap(); };                                                     
+#define PL701_ASSERT(x, msg, ...) if(!x){ PL701_ERROR(msg,  ##__VA_ARGS__ ); PL701_BREAK(); };                                                     
 #endif
