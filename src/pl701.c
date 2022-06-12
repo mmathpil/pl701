@@ -19,13 +19,13 @@ int main(int argc, char* argv[]){
 
   Token* token;
   int res, success;
-  res = pl701_next_token(tkizer, &token, &success);
+  res = pl701_next_token(tkizer, &token);
 
   if(res != PL701_OK){
     printf("Tokenizer failed.\n");
     return 1; };
 
-  if(!success){
+  if(tkizer->tkinzr_state == TKZR_FAILED){
     printf("Failed to find token.\n");
     return 1;
    };

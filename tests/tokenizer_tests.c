@@ -1,5 +1,13 @@
+#include "string.h"
 #include "tokenizer_tests.h"
 #include "src/error.h"
+
+
+enum TokenizerTestResult {
+    TEST_FAILED = 0,
+    TEST_SUCCESS = 1
+};
+
 
 int 
 tokenizer_run_all_tests(int argc, char* argv[]){
@@ -49,13 +57,87 @@ write_tokens_to_file(const char* filename, const char* tokens[], int num){
     return  PL701_OK;
 };
 
+
+static int
+compare_tokens(Token* const cmp, Token* const fixed) {
+    int res = 1;
+    res = res && (strcmp(cmp->name, fixed->name) == 0);
+    res = res && (cmp->name_len == fixed->name_len);
+    res = res && (cmp->tag == fixed->tag);
+
+    return res;
+};
+
+
+static int 
+token_parse_test_tempate(TokenizerTestInstance* test) {
+
+    if (write_tokens_to_file(test->filename, test->token_list, test->token_num) != PL701_OK) return;
+
+    Tokenizer* tkinzer = init_and_load_tokenizer(test->filename);
+    if (!tkinzer) return TEST_FAILED;
+
+
+    Token* tested_token, fixed_token;
+    int res;
+    int linecount = 1;
+
+    for (int count = 0; count < test->token_num; count++) {
+
+
+        // Act
+        res = pl701_next_token(tkinzer, &tested_token);
+
+        // Assert
+
+        if (res != PL701_OK) {
+            PL701_ERRORC(res, "Tokenizer failed.")
+                return TEST_FAILED;
+        };
+
+        if (tkinzer->tkinzr_state != TKZR_READY) {
+            PL701_ERROR("Failed to find token.")
+                return TEST_FAILED;
+        };
+
+        fixed_token.name = test->token_list[count];
+        fixed_token.name_len = strlen(test->token_list[count]);
+        fixed_token.tag = TK_ID;
+
+        if (!compare_tokens(tested_token, &fixed_token)) {
+            PL701_ERROR("Token content incorrect : %s", tested_token->name);
+            return TEST_FAILED;
+        }
+
+        //Test the positions of the tokenizer.
+        if (tkinzer->line_count != linecount) {
+            PL701_ERROR("Incorrect line count: %d", tkinzer->line_count);
+            return TEST_FAILED;
+        }
+        if (tkinzer->line_pos != strlen(test->token_list[count])) {
+            PL701_ERROR("Incorrect line position: %d", tkinzer->line_pos);
+            return TEST_FAILED;
+        }
+
+        linecount++;
+        pl701_free_token(tested_token);
+    };
+
+    pl701_tokenizer_finalized(tkinzer);
+
+    return TEST_SUCCESS;
+};
+
+
 static void 
 tokenizer_ID_tests(){
     // Arrange
    
-    static const char* filename = "tokenizer_id_tests.txt";
+
+
+    static const char* fname = "tokenizer_id_tests.txt";
     const char* tokens[] = {
-        "abc",
+        "bc",
         "abcEFG",
         "a1b2c3",
         "a1-b2-c3",
@@ -65,41 +147,23 @@ tokenizer_ID_tests(){
         "_a0-b2SA_C--4"
     };
 
-    int tokenum = sizeof(tokens) / sizeof(tokens[0]);
+    TokenizerTestInstance test = {
+        .tkinzr = NULL,
+        .filename = fname,
+        .token_list = tokens,
+        .token_num = sizeof(tokens) / sizeof(tokens[0])
+    };
+    
+    // Act
 
-    if (write_tokens_to_file(filename, tokens, tokenum) != PL701_OK) return;
+    if (token_parse_test_tempate(&test) == TEST_SUCCESS) {
 
-    Tokenizer* tkinzer = init_and_load_tokenizer(filename);
-    if(!tkinzer) return;
-
-
-    Token* token;
-    int res;
-
-    for (int count = 0; count < tokenum; count++) {
-
-
-        // Act
-        res = pl701_next_token(tkinzer, &token);
-
-        // Assert
-
-        if (res != PL701_OK) {
-            PL701_ERRORC(res, "Tokenizer failed.")
-                return;
-        };
-
-        if (tkinzer->tkinzr_state != TKZR_READY) {
-            PL701_ERROR("Failed to find token.")
-                return;
-        };
-
-        if (token->tag != TK_ID) {
-            PL701_ERROR("Incorrect Token Tags.")
-        }
-
-        PL701_INFO("Token name : %s", token->name);
+        PL701_INFO("tokenizer_ID_tests finished!");
     }
+    else {
+        PL701_INFO("tokenizer_ID_tests failed!");
+    };
+
 
 };
 

@@ -6,7 +6,7 @@
 #include "error.h"
 
 
-#define PL701_TOKENIZER_BLOCK_SZ 512
+#define PL701_TOKENIZER_BLOCK_SZ 16
 
 #define PL701_TOKENIZER_EOF -1
 #define PL701_TOKENIZER_EOB  0
@@ -89,7 +89,7 @@ static int pl701_new_token( Token ** token, char* const name,
                             size_t size, 
                             TokenTag tag);
 
-static int pl701_free_token( Token * token);
+int pl701_free_token( Token * token);
 
 int pl701_next_token(Tokenizer * const tokenizer, 
                             Token** token);

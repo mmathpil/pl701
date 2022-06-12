@@ -216,7 +216,8 @@ pl701_next_char(Tokenizer* const tokenizer, char* ch) {
 
     }
 
-    *ch = c;
+    *ch = *(tokenizer->foward_pos);
+
     tokenizer->foward_pos++;
     return PL701_OK;
 
@@ -231,13 +232,15 @@ pl701_copy_token( Token** token, Tokenizer const * tokenizer){
      char buffer[PL701_TOKENIZER_BLOCK_SZ];
 
      int count = 1;
-     while(cpos != (fpos - 1) ){
+     while(cpos != fpos ){
         if(*cpos == pl701_EOB){
             if(tokenizer->current_buffer) {
                 cpos = tokenizer->buffer_back;
             } else {
                 cpos = tokenizer->buffer;
             }
+
+            if (cpos == fpos) break; 
         }
 
         if (!isspace(*cpos)) {
@@ -252,7 +255,7 @@ pl701_copy_token( Token** token, Tokenizer const * tokenizer){
    
     TokenTag tag = TK_UNDEFINED;
     pl701_get_tag_from_mask(*(tokenizer->parsestate_ptr), &tag);
-    return pl701_new_token( token, buffer, count, tag);
+    return pl701_new_token( token, buffer, count - 1, tag);
 
     };
 
@@ -353,7 +356,7 @@ pl701_new_token( Token ** token, char* name, size_t size, TokenTag tag){
 
 };
 
-static int 
+int 
 pl701_free_token( Token * token){
 
     if(!token) return PL701_MISUSE;
