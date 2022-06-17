@@ -30,7 +30,7 @@ pl701_init_tokenizer( Tokenizer ** tokenizer,
     tkzr->buffer_back[PL701_TOKENIZER_BLOCK_SZ] = pl701_EOB;
 
     tkzr->current_buffer = 0;
-    tkzr->parsestate_ptr = &(tkzr->parsestate_bf);
+    tkzr->parsestate_ptr = &(tkzr->parsestate_bf[0]);
 
     tkzr->tkinzr_state = TKZR_READY;
     tkzr->load_on_swap = 1;
@@ -49,27 +49,76 @@ pl701_init_transition_table(){
         }; };
 
     // Entry point of the transition table.
-    Pl701_TK_TBEPSILON(TK_ST_INITIAL, Pl701_TK_MASK(TK_ST1) | Pl701_TK_MASK(TK_ST2));
-    
-    Pl701_TK_TBSETS(TK_ST1, "\t\n\v\f\r ", Pl701_TK_MASK(TK_ST2))
+    Pl701_TK_TBEPSILON(TK_ST_INITIAL, Pl701_TK_MASK(TK_ST25)| Pl701_TK_MASK(TK_ST1));
 
-    Pl701_TK_TBEPSILON(TK_ST2,  Pl701_TK_MASK(TK_ST1)| Pl701_TK_MASK(TK_ST3));
+    Pl701_TK_TBSETS(TK_ST25, "\t\n\v\f\r ", Pl701_TK_MASK(TK_ST1));
+
+    Pl701_TK_TBEPSILON(TK_ST1,  Pl701_TK_MASK(TK_ST25)|
+                                Pl701_TK_MASK(TK_ST2)|
+                                Pl701_TK_MASK(TK_ST6)|
+                                Pl701_TK_MASK(TK_ST18));
 
     // Parsing of the ID.
-    Pl701_TK_TBRANGE(TK_ST3, 'a','z' , Pl701_TK_MASK(TK_ST4));
+    Pl701_TK_TBRANGE(TK_ST2, 'a','z' , Pl701_TK_MASK(TK_ST3));
+    Pl701_TK_TBRANGE(TK_ST2, 'A', 'Z', Pl701_TK_MASK(TK_ST3));
+    Pl701_TK_TBSETS(TK_ST2, "_", Pl701_TK_MASK(TK_ST3));
+
+    Pl701_TK_TBRANGE(TK_ST3, 'a', 'z', Pl701_TK_MASK(TK_ST4));
     Pl701_TK_TBRANGE(TK_ST3, 'A', 'Z', Pl701_TK_MASK(TK_ST4));
-    Pl701_TK_TBSETS(TK_ST3, "_", Pl701_TK_MASK(TK_ST4));
+    Pl701_TK_TBRANGE(TK_ST3, '0', '9', Pl701_TK_MASK(TK_ST4));
+    Pl701_TK_TBSETS(TK_ST3, "_-", Pl701_TK_MASK(TK_ST4));
+    Pl701_TK_TBEPSILON(TK_ST3, Pl701_TK_MASK(TK_ST5));
 
-    Pl701_TK_TBRANGE(TK_ST4, 'a', 'z', Pl701_TK_MASK(TK_ST5));
-    Pl701_TK_TBRANGE(TK_ST4, 'A', 'Z', Pl701_TK_MASK(TK_ST5));
-    Pl701_TK_TBRANGE(TK_ST4, '0', '9', Pl701_TK_MASK(TK_ST5));
-    Pl701_TK_TBSETS(TK_ST4, "_-'", Pl701_TK_MASK(TK_ST5));
-    Pl701_TK_TBEPSILON(TK_ST4, Pl701_TK_MASK(TK_ST6));
-
-    Pl701_TK_TBEPSILON(TK_ST5, Pl701_TK_MASK(TK_ST4)|Pl701_TK_MASK(TK_ST6));
-    // TK_ST6 is the terminating state of ID.
+    Pl701_TK_TBEPSILON(TK_ST4, Pl701_TK_MASK(TK_ST3)|Pl701_TK_MASK(TK_ST5));
 
 
+    // TK_ST5 is the terminating state of ID.
+
+    // Parsing floating point.
+    Pl701_TK_TBSETS(TK_ST6, "-", Pl701_TK_MASK(TK_ST7));
+    Pl701_TK_TBEPSILON(TK_ST6, Pl701_TK_MASK(TK_ST7));
+
+    Pl701_TK_TBRANGE(TK_ST7, '0', '9', Pl701_TK_MASK(TK_ST8));
+
+    Pl701_TK_TBEPSILON(TK_ST8, Pl701_TK_MASK(TK_ST7));
+    Pl701_TK_TBSETS(TK_ST8,".", Pl701_TK_MASK(TK_ST9));
+    Pl701_TK_TBSETS(TK_ST8, "Ee", Pl701_TK_MASK(TK_ST15));
+
+    Pl701_TK_TBSETS(TK_ST15, "+-", Pl701_TK_MASK(TK_ST16));
+    Pl701_TK_TBEPSILON(TK_ST15, Pl701_TK_MASK(TK_ST16));
+    Pl701_TK_TBRANGE(TK_ST16, '0', '9', Pl701_TK_MASK(TK_ST17));
+    Pl701_TK_TBEPSILON(TK_ST17, Pl701_TK_MASK(TK_ST16)| Pl701_TK_MASK(TK_ST14));
+
+    Pl701_TK_TBRANGE(TK_ST9, '0', '9', Pl701_TK_MASK(TK_ST10));
+
+    Pl701_TK_TBEPSILON(TK_ST10, Pl701_TK_MASK(TK_ST9)|Pl701_TK_MASK(TK_ST14));
+    Pl701_TK_TBSETS(TK_ST10, "Ee", Pl701_TK_MASK(TK_ST11));
+
+    Pl701_TK_TBSETS(TK_ST11, "+-", Pl701_TK_MASK(TK_ST12));
+    Pl701_TK_TBEPSILON(TK_ST11, Pl701_TK_MASK(TK_ST12));
+
+    Pl701_TK_TBRANGE(TK_ST12, '0', '9', Pl701_TK_MASK(TK_ST13));
+    Pl701_TK_TBEPSILON(TK_ST13, Pl701_TK_MASK(TK_ST12)| Pl701_TK_MASK(TK_ST14));
+
+    // TK_ST14 is the terminating states for FLOATS.
+
+    // Parsing integers.
+    Pl701_TK_TBSETS(TK_ST18, "-", Pl701_TK_MASK(TK_ST19));
+    Pl701_TK_TBEPSILON(TK_ST18, Pl701_TK_MASK(TK_ST19));
+
+    Pl701_TK_TBRANGE(TK_ST19, '0', '9', Pl701_TK_MASK(TK_ST20));
+    Pl701_TK_TBSETS(TK_ST19, "0", Pl701_TK_MASK(TK_ST22));
+
+    Pl701_TK_TBEPSILON(TK_ST20, Pl701_TK_MASK(TK_ST19)| Pl701_TK_MASK(TK_ST21));
+
+    Pl701_TK_TBSETS(TK_ST22, "xX", Pl701_TK_MASK(TK_ST23));
+    Pl701_TK_TBRANGE(TK_ST23, '0', '9', Pl701_TK_MASK(TK_ST24));
+    Pl701_TK_TBRANGE(TK_ST23, 'a', 'f', Pl701_TK_MASK(TK_ST24));
+    Pl701_TK_TBRANGE(TK_ST23, 'A', 'F', Pl701_TK_MASK(TK_ST24));
+
+    Pl701_TK_TBEPSILON(TK_ST24, Pl701_TK_MASK(TK_ST23) | Pl701_TK_MASK(TK_ST21));
+
+    // TK_ST21 is the terminating states for INTEGERS.
 
     return PL701_OK;
 };
@@ -224,15 +273,15 @@ pl701_next_char(Tokenizer* const tokenizer, char* ch) {
 };
 
 static int 
-pl701_copy_token( Token** token, Tokenizer const * tokenizer){
+pl701_copy_token( Token* token, Tokenizer const * tokenizer){
 
      uint8_t* cpos = tokenizer->current_pos;
      uint8_t* fpos = tokenizer->foward_pos; 
 
-     char buffer[PL701_TOKENIZER_BLOCK_SZ];
+     char* buffer = token->name;
 
-     int count = 1;
-     while(cpos != fpos ){
+     size_t count = 0;
+     while( (cpos != fpos) || (count >= token->max_len) ){
         if(*cpos == pl701_EOB){
             if(tokenizer->current_buffer) {
                 cpos = tokenizer->buffer_back;
@@ -244,18 +293,22 @@ pl701_copy_token( Token** token, Tokenizer const * tokenizer){
         }
 
         if (!isspace(*cpos)) {
-            buffer[count - 1] = *cpos;
+            buffer[count] = *cpos;
             count++;
         };
 
          cpos++;
      };
 
-     if (!isspace(*cpos)) buffer[count - 1] = *cpos;
-   
+
+     buffer[count] = '\0';
+     
     TokenTag tag = TK_UNDEFINED;
     pl701_get_tag_from_mask(*(tokenizer->parsestate_ptr), &tag);
-    return pl701_new_token( token, buffer, count - 1, tag);
+
+    token->tag = tag;
+
+    return PL701_OK;
 
     };
 
@@ -328,7 +381,7 @@ WHILE_END:
     tokenizer->parsestate_ptr = tokenizer->parsestate_bf;
 
     // Updating tokenizer states.
-    if (tokenizer->foward_pos == pl701_EOF) {
+    if (*(tokenizer->foward_pos) == pl701_EOF) {
         tokenizer->tkinzr_state = TKZR_EOF;
     }
     else {
@@ -338,17 +391,17 @@ WHILE_END:
     return PL701_OK;
 }
 
-static int
-pl701_new_token( Token ** token, char* name, size_t size, TokenTag tag){
+int
+pl701_new_token( Token ** token, char* name, size_t max_size, TokenTag tag){
      
      Token* tk;
      tk = (Token*)malloc(sizeof(Token));
 
      // TODO: should handle unicode in future.
-     tk->name = (char*)malloc((size + 1)* sizeof(char));
-     memcpy(tk->name, name, size * sizeof(char));
-     *(tk->name + size) = '\0'; // Make the string null terminated.
-     tk->name_len = size;
+     tk->name = (char*)malloc((max_size + 1)* sizeof(char));
+     memcpy(tk->name, name, max_size * sizeof(char));
+     tk->name[max_size] = '\0'; // Make the string null terminated.
+     tk->max_len = max_size;
      tk->tag = tag;
      *token = tk;
 
@@ -368,7 +421,7 @@ pl701_free_token( Token * token){
 
 
 int 
-pl701_next_token(Tokenizer * const tokenizer, Token** token){
+pl701_next_token(Tokenizer * const tokenizer, Token* token){
     
     StatesMask_t mask = Pl701_TK_MASK(TK_ST_INITIAL); // Initial state.
     StatesMask_t final_states = 0;
@@ -379,7 +432,7 @@ pl701_next_token(Tokenizer * const tokenizer, Token** token){
 
      char ch;
 
-     for (int count = 1; count < PL701_TOKENIZER_BLOCK_SZ; count ++) {
+     for (int count = 1; count < PL701_MAX_TOKEN_SZ; count ++) {
 
         pl701_next_char(tokenizer, &ch);
 
@@ -402,12 +455,8 @@ pl701_next_token(Tokenizer * const tokenizer, Token** token){
             }
             else {
                 PL701_CRITICAL("Tokenizer internal error!");
-            };
-            
+            };   
         }
-
-
-
     };
 
      PL701_WARN("The maximum token size reached. Start rewinding anyway.")
@@ -426,9 +475,9 @@ static StatesMask_t
 pl701_find_epsilon_closure(const StatesMask_t mask){
     StatesMask_t result_mask = 0;
 
-    for(int i = 0; i < PL701_TK_STATE_COUNT; i++){
+    for(size_t i = 0; i < PL701_TK_STATE_COUNT; i++){
         //Looping over all the states in mask.
-        if(mask & (1 << i)){
+        if(mask & (1uL << i)){
             StatesMask_t states = pl701_transtb_single_entry(i, PL701_TK_EPSILON);
             // Getting the states reached by one epsilon transition.
 
@@ -450,8 +499,8 @@ pl701_query_transition_table(const StatesMask_t mask,
 
     StatesMask_t result_mask = 0;
 
-    for(int i = 0; i < PL701_TK_STATE_COUNT; i++){
-        if(mask & (1 << i)){
+    for(size_t i = 0; i < PL701_TK_STATE_COUNT; i++){
+        if(mask & (1uL << i)){
             StatesMask_t states = pl701_transtb_single_entry(i, (int)ch);
             StatesMask_t closure = pl701_find_epsilon_closure(states);
 
@@ -475,8 +524,19 @@ pl701_transtb_single_entry(ParseState state, int character){
 static void 
 pl701_get_tag_from_mask(const StatesMask_t mask, TokenTag* const tag){
 
-    if (mask & Pl701_TK_MASK(TK_ST6)) *tag = TK_ID;
+    if (mask & Pl701_TK_MASK(TK_ST5)) {
+        *tag = TK_ID; return;
+    };
 
+    if (mask & Pl701_TK_MASK(TK_ST14)) {
+        *tag = TK_FLOAT; return;
+    };
+
+    if (mask & Pl701_TK_MASK(TK_ST21)) {
+        *tag = TK_INTEGER; return;
+    };
+
+    *tag = TK_UNDEFINED; return;
 };
 
 

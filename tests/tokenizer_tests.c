@@ -1,4 +1,5 @@
 #include "string.h"
+#include "ctype.h"
 #include "tokenizer_tests.h"
 #include "src/error.h"
 
@@ -13,6 +14,8 @@ int
 tokenizer_run_all_tests(int argc, char* argv[]){
 
     tokenizer_ID_tests();
+    tokenizer_floats_tests();
+    tokenizer_integer_tests();
     return 0;
 
 }
@@ -62,7 +65,6 @@ static int
 compare_tokens(Token* const cmp, Token* const fixed) {
     int res = 1;
     res = res && (strcmp(cmp->name, fixed->name) == 0);
-    res = res && (cmp->name_len == fixed->name_len);
     res = res && (cmp->tag == fixed->tag);
 
     return res;
@@ -72,13 +74,16 @@ compare_tokens(Token* const cmp, Token* const fixed) {
 static int 
 token_parse_test_tempate(TokenizerTestInstance* test) {
 
-    if (write_tokens_to_file(test->filename, test->token_list, test->token_num) != PL701_OK) return;
+    if (write_tokens_to_file(test->filename, test->token_list, test->token_num) != PL701_OK) return  TEST_FAILED;
 
     Tokenizer* tkinzer = init_and_load_tokenizer(test->filename);
     if (!tkinzer) return TEST_FAILED;
 
 
     Token* tested_token, fixed_token;
+
+    pl701_new_token(&tested_token, "", PL701_MAX_TOKEN_SZ, TK_UNDEFINED);
+
     int res;
     int linecount = 1;
 
@@ -86,7 +91,7 @@ token_parse_test_tempate(TokenizerTestInstance* test) {
 
 
         // Act
-        res = pl701_next_token(tkinzer, &tested_token);
+        res = pl701_next_token(tkinzer, tested_token);
 
         // Assert
 
@@ -100,9 +105,12 @@ token_parse_test_tempate(TokenizerTestInstance* test) {
                 return TEST_FAILED;
         };
 
-        fixed_token.name = test->token_list[count];
-        fixed_token.name_len = strlen(test->token_list[count]);
-        fixed_token.tag = TK_ID;
+        // Remove white space padding.
+        char* nameptr = test->token_list[count];
+        while (isspace(*nameptr)) { nameptr++; };
+
+        fixed_token.name = nameptr;
+        fixed_token.tag = test->tested_tag;
 
         if (!compare_tokens(tested_token, &fixed_token)) {
             PL701_ERROR("Token content incorrect : %s", tested_token->name);
@@ -120,9 +128,10 @@ token_parse_test_tempate(TokenizerTestInstance* test) {
         }
 
         linecount++;
-        pl701_free_token(tested_token);
+        
     };
 
+    pl701_free_token(tested_token);
     pl701_tokenizer_finalized(tkinzer);
 
     return TEST_SUCCESS;
@@ -137,11 +146,11 @@ tokenizer_ID_tests(){
 
     static const char* fname = "tokenizer_id_tests.txt";
     const char* tokens[] = {
-        "bc",
-        "abcEFG",
+        "  bc",
+        " abcEFG",
         "a1b2c3",
         "a1-b2-c3",
-        "__abc__",
+        "  __abc__",
         "_",
         "a",
         "_a0-b2SA_C--4"
@@ -151,7 +160,8 @@ tokenizer_ID_tests(){
         .tkinzr = NULL,
         .filename = fname,
         .token_list = tokens,
-        .token_num = sizeof(tokens) / sizeof(tokens[0])
+        .token_num = sizeof(tokens) / sizeof(tokens[0]),
+        .tested_tag = TK_ID
     };
     
     // Act
@@ -167,5 +177,74 @@ tokenizer_ID_tests(){
 
 };
 
+static void 
+tokenizer_floats_tests() {
+    static const char* fname = "tokenizer_float_tests.txt";
+    const char* tokens[] = {
+        "123.456",
+        "0.0",
+        "0000.0",
+        "-12.23",
+        "-333e12",
+        "13e16",
+        "10.0e-7",
+        "0.123E+12",
+        "-000E+000"
+    };
 
+    TokenizerTestInstance test = {
+    .tkinzr = NULL,
+    .filename = fname,
+    .token_list = tokens,
+    .token_num = sizeof(tokens) / sizeof(tokens[0]),
+    .tested_tag = TK_FLOAT
+    };
+
+    // Act
+
+
+    if (token_parse_test_tempate(&test) == TEST_SUCCESS) {
+
+        PL701_INFO("tokenizer_FLOAT_tests finished!");
+    }
+    else {
+        PL701_INFO("tokenizer_FLOAT_tests failed!");
+    };
+
+};
+
+static void tokenizer_integer_tests() {
+
+    static const char* fname = "tokenizer_INTEGER_tests.txt";
+    const char* tokens[] = {
+        "123",
+        "0",
+        "-123",
+        "0X123",
+        "0xabcdef",
+        "-0X1abd2",
+        "-0xDEADbeef",
+        "0x000",
+        "-0000"
+    };
+
+    TokenizerTestInstance test = {
+    .tkinzr = NULL,
+    .filename = fname,
+    .token_list = tokens,
+    .token_num = sizeof(tokens) / sizeof(tokens[0]),
+    .tested_tag = TK_INTEGER
+    };
+
+    // Act
+
+
+    if (token_parse_test_tempate(&test) == TEST_SUCCESS) {
+
+        PL701_INFO("tokenizer_INTEGER_tests finished!");
+    }
+    else {
+        PL701_INFO("tokenizer_INTEGER_tests failed!");
+    };
+};
 

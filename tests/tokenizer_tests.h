@@ -21,6 +21,7 @@ struct TokenizerTestInstance {
 	const char* filename;
 	const char** token_list;
 	uint32_t token_num;
+	TokenTag tested_tag;
 
 } typedef TokenizerTestInstance;
 
@@ -30,6 +31,9 @@ static int token_parse_test_tempate(TokenizerTestInstance* test);
 // Tests
 
 static void tokenizer_ID_tests();
+static void tokenizer_floats_tests();
+static void tokenizer_integer_tests();
+
 
 
 #endif

@@ -6,7 +6,8 @@
 #include "error.h"
 
 
-#define PL701_TOKENIZER_BLOCK_SZ 16
+#define PL701_TOKENIZER_BLOCK_SZ 32
+#define PL701_MAX_TOKEN_SZ PL701_TOKENIZER_BLOCK_SZ
 
 #define PL701_TOKENIZER_EOF -1
 #define PL701_TOKENIZER_EOB  0
@@ -71,28 +72,30 @@ enum TokenTag {
 
     TK_UNDEFINED = 0,
     TK_ID,
-    TK_NUM,
-    TK_LITERAL,
+    TK_FLOAT,
+    TK_INTEGER,
+    TK_STRING,
     TK_SPECIAL_SYMB
 
 } typedef TokenTag;
 
 struct Token {
     char* name;
-    uint32_t name_len;
+    uint32_t max_len;
     TokenTag tag;
 } typedef Token;
 
 typedef uint64_t TokenHash_t; 
 
-static int pl701_new_token( Token ** token, char* const name, 
-                            size_t size, 
+
+int pl701_new_token( Token ** token, char* const name, 
+                            size_t max_size, 
                             TokenTag tag);
 
 int pl701_free_token( Token * token);
 
 int pl701_next_token(Tokenizer * const tokenizer, 
-                            Token** token);
+                            Token* token);
 
 static int pl701_rewind_char(Tokenizer* const tokenizer);
 static int pl701_next_char(Tokenizer* const tokenizer, char* ch);
@@ -102,7 +105,7 @@ static int pl701_next_char(Tokenizer* const tokenizer, char* ch);
 
 static int pl701_rewind_tokenizer(Tokenizer* const tokenizer);
 
-static int pl701_copy_token( Token** token, Tokenizer const * tokenizer);
+static int pl701_copy_token( Token* token, Tokenizer const * tokenizer);
 
 // After to token have copied, update the line and position count and update the current pointer.
 // Also clean all the statebuffer.
@@ -115,16 +118,14 @@ static int pl701_update_tokenizer(Tokenizer* const tokenizer);
 
 enum ParseState{
     TK_ST_INITIAL = 0,
-    TK_ST1 =  1,
-    TK_ST2  = 2,
-    TK_ST3  = 3,
-    TK_ST4  = 4,
-    TK_ST5  = 5,
-    TK_ST6  = 6,
-    TK_ST7  = 7,
-    TK_ST8  = 8,
-    TK_ST9  = 9,
-    TK_ST10 = 10
+    TK_ST1, TK_ST2, TK_ST3, TK_ST4, TK_ST5, TK_ST6, TK_ST7, TK_ST8,
+    TK_ST9, TK_ST10,TK_ST11, TK_ST12, TK_ST13, TK_ST14, TK_ST15, TK_ST16,
+    TK_ST17, TK_ST18, TK_ST19, TK_ST20, TK_ST21, TK_ST22, TK_ST23, TK_ST24,
+    TK_ST25, TK_ST26, TK_ST27, TK_ST28, TK_ST29, TK_ST30, TK_ST31, TK_ST32,
+    TK_ST33, TK_ST34, TK_ST35, TK_ST36, TK_ST37, TK_ST38, TK_ST39, TK_ST40,
+    TK_ST41, TK_ST42, TK_ST43, TK_ST44, TK_ST45, TK_ST46, TK_ST47, TK_ST48,
+    TK_ST49, TK_ST50, TK_ST51, TK_ST52, TK_ST53, TK_ST54, TK_ST55, TK_ST56,
+    TK_ST57, TK_ST58, TK_ST59, TK_ST60, TK_ST61, TK_ST62, TK_ST63
 
 } typedef ParseState;
 
@@ -135,7 +136,7 @@ static int pl701_init_transition_table();
 
 
 #define Pl701_TK_ADD_TBENTRY(state, ch, mask) do{\
-     pl701_transition_table__[state][(uint8_t)ch] = mask;\
+     pl701_transition_table__[state][(uint8_t)ch] = pl701_transition_table__[state][(uint8_t)ch]|mask;\
 } while(0);\
 
 #define Pl701_TK_TBEPSILON(state, mask)  Pl701_TK_ADD_TBENTRY(state, PL701_TK_EPSILON, mask)
@@ -155,8 +156,7 @@ static int pl701_init_transition_table();
 
 #define Pl701_TK_MASK(state) (uint64_t)(1 << state)
 
-static StatesMask_t pl701_final_states =  Pl701_TK_MASK(TK_ST6);
-
+static StatesMask_t pl701_final_states =  Pl701_TK_MASK(TK_ST5) | Pl701_TK_MASK(TK_ST14)| Pl701_TK_MASK(TK_ST21);
 
 static StatesMask_t pl701_find_epsilon_closure(const StatesMask_t mask);
 static StatesMask_t pl701_query_transition_table(const StatesMask_t mask,
